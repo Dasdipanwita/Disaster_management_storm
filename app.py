@@ -1,55 +1,47 @@
+import streamlit as st
 import numpy as np
-from flask import Flask, request, jsonify, render_template
 import pickle
 
-app = Flask(__name__)
-
-# Load the trained model, imputer, and encoder
+# Load the trained model, imputer, scaler, and encoder
 try:
     with open('storm_model.pkl', 'rb') as model_file:
         model = pickle.load(model_file)
     with open('storm_imputer.pkl', 'rb') as imputer_file:
         imputer = pickle.load(imputer_file)
+    with open('storm_scaler.pkl', 'rb') as scaler_file:
+        scaler = pickle.load(scaler_file)
     with open('storm_encoder.pkl', 'rb') as encoder_file:
         encoder = pickle.load(encoder_file)
 except FileNotFoundError:
-    print("Error: Model or preprocessor files not found. Please run storm_model_fixed.py first.")
-    exit()
+    st.error("Model or preprocessor files not found. Please run training first.")
+    st.stop()
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+# Streamlit UI
+st.title("🌪️ Storm Status Predictor")
+st.markdown("Enter the storm's details to predict its status.")
 
-@app.route('/predict', methods=['POST'])
-def predict():
+# Input fields
+lat = st.number_input("Latitude", value=32.5)
+long = st.number_input("Longitude", value=-52.0)
+wind = st.number_input("Wind Speed (knots)", value=20)
+pressure = st.number_input("Pressure (mb)", value=1005.0, step=0.1)
+
+# Prediction
+if st.button("Predict Status"):
     try:
-        # Get data from the POST request
-        data = request.get_json(force=True)
-        
-        # Extract features, handle missing pressure by setting it to NaN
-        lat = float(data['lat'])
-        long = float(data['long'])
-        wind = float(data['wind'])
-        pressure = data.get('pressure')
-        pressure = float(pressure) if pressure else np.nan
-
-        # Create a numpy array for the model
+        # Prepare features
         features = np.array([[lat, long, wind, pressure]])
 
-        # Impute missing values using the loaded imputer
+        # Impute missing values
         features_imputed = imputer.transform(features)
 
-        # Make a prediction
-        prediction_encoded = model.predict(features_imputed)
-        
-        # Decode the prediction to the original label
+        # Scale
+        features_scaled = scaler.transform(features_imputed)
+
+        # Predict
+        prediction_encoded = model.predict(features_scaled)
         prediction = encoder.inverse_transform(prediction_encoded)[0]
 
-        # Return the result as JSON
-        return jsonify({'prediction': prediction})
-
+        st.success(f"✅ Predicted Storm Status: **{prediction}**")
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
-
-if __name__ == '__main__':
-    app.run(debug=True)
+        st.error(f"Error: {e}")
